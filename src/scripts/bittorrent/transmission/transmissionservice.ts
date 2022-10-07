@@ -1,4 +1,4 @@
-import {ContextActionList, TorrentActionList, TorrentClient, TorrentUpdates} from "../torrentclient";
+import {ContextActionList, TorrentActionList, TorrentClient, TorrentUpdates, TorrentUploadOptions, TorrentUploadOptionsEnable} from "../torrentclient";
 import {TransmissionTorrent} from "./torrentt";
 import { fields } from "./transmissionconfig"
 import axios, { AxiosInstance, AxiosResponse, AxiosError, Axios } from "axios";
@@ -19,6 +19,12 @@ export class TransmissionClient extends TorrentClient<TransmissionTorrent> {
     config = {
       session: undefined,
     };
+
+    public uploadOptionsEnable: TorrentUploadOptionsEnable = {
+      saveLocation: true,
+      category: true,
+      startTorrent: true,
+    }
 
     private updateSession(res: AxiosResponse | AxiosError | any) {
       let session: string
@@ -181,16 +187,35 @@ export class TransmissionClient extends TorrentClient<TransmissionTorrent> {
       return match && match[1];
     }
 
+    private removeEmpty(obj: object) {
+      return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v != null && v != undefined));
+    }
+
+    /**
+     * Transforms generic upload options to Transmission API variants
+     * @param uploadOptions
+     * @returns object with post options to transmission rpc call
+     */
+    private getUploadOptions(uploadOptions: TorrentUploadOptions) {
+      let postOptions = {
+        'download-dir': uploadOptions.saveLocation,
+        labels: [uploadOptions.category],
+        paused: !uploadOptions.startTorrent,
+      }
+      return this.removeEmpty(postOptions)
+    }
+
     /**
      * Add a torrent to the client by sending a magnet link to the API. Should return
      * a promise that the torrent has been added successfully to the client.
      * @param {string} magnetURL
      * @return {promise} isAdded
      */
-    async addTorrentUrl(magnet: string): Promise<void> {
+    async addTorrentUrl(magnet: string, uploadOptions: TorrentUploadOptions): Promise<void> {
       var data = {
         arguments: {
           filename: magnet,
+          ...this.getUploadOptions(uploadOptions)
         },
         method: "torrent-add",
       };
@@ -211,12 +236,14 @@ export class TransmissionClient extends TorrentClient<TransmissionTorrent> {
      * @param {string} filename
      * @return {promise} isAdded
      */
-    async uploadTorrent(buffer: Uint8Array): Promise<void> {
+    async uploadTorrent(buffer: Uint8Array, filename?: string, uploadOptions?: TorrentUploadOptions): Promise<void> {
       var base64data = Buffer.from(buffer).toString("base64")
 
       var data = {
         arguments: {
           metainfo: base64data,
+          filename: filename,
+          ...this.getUploadOptions(uploadOptions),
         },
         method: "torrent-add",
       };
